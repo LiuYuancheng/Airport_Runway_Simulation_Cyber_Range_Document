@@ -1,20 +1,22 @@
 # Aviation Runway System Cyber Security Case Study 02
 
-### [ MITM Attack On PLC-HMI IEC104 OT Control Channel ]
+### [ MITM Attack on PLC–HMI IEC104 OT Control Channel ]
 
 ![](2_CaseStudy_MITM_Img/logo_mid.png)
 
-**Project Design Purpose**: This article will introduce the how we use the [**Mini OT Aviation CAT-II Airport Runway Lights Management Simulation System**](https://www.linkedin.com/pulse/aviation-runway-lights-management-simulation-system-yuancheng-liu-5rzhc) (v_0.2.1) we developed  an attacker can launch and man in the middle attack from an unauthorized IoT  surveillance camera inside the Tower ATC control Room to temporary denied the airport's aircraft traffic control service (landing) and finally cased the airplane fuel low caution situation/accident. This can study designed as part of our IT/OT/IoT workshop and the attack vectors includes: Supply Chain attack, Firmware updates & configuration, IEC61850-104 packet imperfections, Eavesdropping, Man in the middle, Component Denial of Services.
+The modern airports rely heavily on integrated OT, IT, and IoT systems to ensure safe and efficient runway operations and these systems have also become potential targets for cyberattacks. In this case study, we use our [**Mini OT Aviation CAT-II Airport Runway Lights Management Simulation System**](https://www.linkedin.com/pulse/aviation-runway-lights-management-simulation-system-yuancheng-liu-5rzhc) (v_0.2.1) to demonstrate how a malicious red-team-actor could exploit misconfigurations and weaknesses in the cyber range's PLC-HMI IEC104 control channel through a **Man-in-the-Middle (MITM) attack**. 
 
-In this cyber security case study I will cover below sections:
+This case study is designed as part of our IT/OT/IoT cybersecurity workshop to show six different attack vectors which may happened in the real world system. The scenario assumes an attacker compromises an unauthorized third party IoT surveillance camera inside the Tower ATC Control Room, and from there intercepts and manipulates OT traffic between the HMI and PLCs. The simulated attack results in a temporary denial of runway light control, escalating into an aircraft traffic control service disruption and ultimately creating a Aircraft-fuel-low caution situation.
 
-- The attack scenario back ground introduction and some hypothesis we made to create the case study.
-- The Aviation Runway Lights Management Simulation System's warning, alert and safety protection system.
-- Miss configuration of the runway light control network and how attacker use these weak point/   as the a break point to do the vulnerability exploitation. 
-- Detailed attack path and the attack technical details about how the attacker to do the command and control for part of the PLC-HMI IEC104 Control Channel
-- Demo of the attack scenario and effect for cyber exercise instance response team to process. 
+To guide readers through the exercise, I will cover the following sections:
 
-Important: This case study will introduce and demo the general on the cyber range which is designed for cyber exercise which can flexible inject different vulnerability and misconfiguration.  In real world the safety protection will be much complex and robust,  most the misconfiguration point we introduced are hypothesis  and normally they will be fixed. So it is impossible to do the same attack in the real word system.
+- Background of the attack scenario and hypotheses used in the case study.
+- The warning, alert, and safety protection systems of the Runway Lights Management Simulation System.
+- How misconfigurations in the runway light tower network created exploitable weak points.
+- Step-by-step attack path with technical details of the MITM control channel manipulation.
+- Demonstration of the attack’s impact and its use in training incident response teams.
+
+**Important Note:** This case study takes place in a controlled cyber range environment where vulnerabilities and misconfigurations are deliberately injected for training purposes. In real-world aviation systems, safety protections are more robust and most of the weaknesses described here would be addressed. The attacks demonstrated cannot be directly replicated on operational airport systems.
 
 ```python
 # Author:      Yuancheng Liu
@@ -31,7 +33,18 @@ Important: This case study will introduce and demo the general on the cyber rang
 
 ### Introduction
 
-This cyber attack case study will show the attack use multiple different attack techniques to modified the control data flow channel between the Runway Light and Indicator Control HMI located in the airport runway tower and one of the PLC to control the runway holding light and finally cased deny/delay of the aircraft traffic control service (landing). The Case Study and the demo is implement on a fully digital Aviation Runway Lights Management Simulation System. All the demonstrated attack case/ techniques are only used for education and training for different level of IT-OT cyber security ICS course. 
+This cyberattack case study demonstrates how multiple attack techniques can be combined to manipulate the control data flow channel between the Runway Light and Indicator Control HMI in the airport tower and a PLC responsible for controlling runway holding lights. By exploiting these weaknesses, the attacker is able to cause a **denial or delay of aircraft landing operations**, directly impacting air traffic control services. 
+
+The case study will cover six types of cyber attack vector including:
+
+- Supply chain compromise
+- Malicious firmware updates & misconfigurations
+- IEC61850-104 protocol imperfections
+- Eavesdropping and packet tampering
+- Man-in-the-Middle control hijacking
+- Component-level denial of service
+
+The entire case study and demonstration are conducted on the latest version of Mini OT Aviation CAT-II Airport Runway Lights Management Simulation System, which specifically designed for research, training, and cyber range exercises. All attack scenarios and techniques presented here are strictly for educational purposes, supporting IT/OT cybersecurity training and ICS-focused courses at different levels.
 
 #### Introduction of the Aviation Cyber Range
 
@@ -50,19 +63,48 @@ Currently the cyber range is update to version v_0.2.1 for more introduction, pl
 
 
 
-#### Configured Scenario and Hypothesis 
+#### Demo System Environment Configuration
 
-The real airport IT and OT system are pretty robust and isolated from against the currently cyber attack, in our case study we did some hypothesis about the "system weak point" and "security misconfiguration" we setup in the cyber range platform. In this case study the network we setup is shown below with 4 different subnet (green team subnet, blue team1 subnet, blue team 2 subnet ) and 17 VMs, the green team subnet is not touchable by the hacker as it is simulate the physical wire connection between physical device and PLCs, the blue team subnet1 is also not touchable and protect by the router as it simulate d the network between tower room and the PLCS, the subnet2 is not touchable directly by the attacker as it simulated the isolated network of the runway control tower but it can be Oblique‌ access by the careless maintenance engineer. The people can physical touch the red team network and the blue team subnet 2, but he can not access both at the same time. The attacker will use the maintenance engineer as a "intermedia" to implement the cyber attack.
+In real-world airports, IT and OT infrastructures are robust, isolated, and designed to resist most currently known cyberattacks. To create a practical training environment for this case study, we deliberately introduced hypothetical weak points and misconfigurations into our cyber range platform. These assumptions allow us to explore how an attacker might exploit vulnerabilities in a less-protected system, without suggesting that such flaws exist in operational airport networks.
+
+The demo network configuration (see figure above) consists of four distinct subnets and a total of 17 virtual machines (VMs) as shown below:
 
 ![](2_CaseStudy_MITM_Img/s_04.png)
 
-There are 5 Hypothesis of system weak points or misconfiguration of the cyber range system: 
+- **Green Team Subnet** – Represents the physical world connections between devices and PLCs. This subnet is **not directly accessible** to the red team attacker.
 
-- Hypothesis 0: The careless maintenance engineer use his maintenance laptop to connect to internet and the attack got a chance to inject a spy trojan in the victim laptop.
-- Hypothesis 1: A maintenance engineer's  laptop can be physical connected to the isolated runway lvl3 OT network to do some test work. The attacker pre install a trojan in the lap top before the maintenance engineer enter the tower control room. 
-- Hypothesis 2: The maintenance engineer connect its laptop to internet after he left the control tower and the hack get critical information and network communication sample from the trojan. 
-- Hypothesis 3: There is one misconfiguration which is one of the thrid party IoT camera in the computer room share the same subnet with the light control HMI.
-- Hypothesis 4: The attack implement some supply chain attack to inject the malicious code in the latest IoT camera's firmware. 
+- **Blue Team Subnet 1** – Simulates the communication network between the runway tower control room and PLCs. It is protected by IP routing controls and also **not directly accessible** to the attacker.
+
+- **Blue Team Subnet 2** – Represents the **isolated network of the runway control tower**, including SCADA HMIs and monitoring systems. Although attackers cannot connect directly, this subnet may be **indirectly exposed** through maintenance activity or misconfigured devices.
+
+- **Red Team Subnet** – Simulates the attacker’s environment, including C2 infrastructure and compromised third-party IoT devices. Attackers cannot directly bridge into the Blue Team Subnet2 without leveraging an **intermediary path**.
+
+A critical design rule in this simulation is that **no individual has the simultaneous access to both the attacker’s environment and the isolated OT network**. 
+
+
+
+#### Case Study Scenario Misconfiguration Hypotheses
+
+Based on the previous environment introduction, we understand there is no way for the red  team attacker to access any part of the OT network in real time. Instead, the attacker must rely on a **careless maintenance engineer** and his compromised laptop to bridge the gap. This creates a realistic insider-like threat vector that highlights the risks of poor endpoint hygiene.
+
+We defined **five key hypotheses** regarding weak points and misconfigurations in this cyber range system:
+
+- **Hypothesis 1** :  A careless maintenance engineer connects his laptop to the internet, giving the attacker an opportunity to install a spy trojan.
+
+- **Hypothesis 2** :  The same laptop is later physically connected to the isolated Level-3 runway OT network for testing, enabling the pre-installed trojan to act inside the control environment.
+
+- **Hypothesis 3** : After leaving the control tower, the maintenance engineer reconnects his laptop to the internet, allowing the attacker to extract sensitive network information and communication samples collected by the trojan.
+
+- **Hypothesis 4** :  The attacker carries out a supply chain compromise, embedding malicious code into the firmware of the IoT camera, which then acts as a stealth access point within the OT environment.
+- **Hypothesis 5** : A misconfiguration places a third-party IoT surveillance camera on the same subnet as the runway light control HMI, the maintenance engineer update the camera with the malicious firmware creating an unexpected point of exposure.
+
+These hypotheses, while unrealistic for real-world aviation systems, provide a **controlled, flexible training ground** where we can simulate supply chain compromise, misconfiguration abuse, insider risk, and OT-specific attack paths such as **MITM manipulation of the IEC104 control channel**.
+
+
+
+------
+
+### Attack Scenario and Path Introduction
 
 
 
