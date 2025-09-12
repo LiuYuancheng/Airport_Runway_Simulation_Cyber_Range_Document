@@ -132,3 +132,49 @@ This scenario demonstrates how a blended attack — combining endpoint compromis
 
 ------
 
+### Cyber Range Warning & Alert System
+
+Before I walk through the demo attack, it’s important to understand the **safety protection mechanisms** built into the cyber range. These mechanisms simulates the real-world Tower ATC safeguards so you can see why the attacker must perform specific reconnaissance and bypass actions to remain covert.
+
+**Purpose & high-level behavior** : The PLCs and HMI in our simulator implement **auto state verification** and a layered **warning/alert generation** system. Whenever an operator issues a control action (e.g., turning on the runway or approach-bar light to release state), the PLCs compare commanded states with the light state sensor feedback. Any mismatch or abnormal condition is flagged and pushed to the tower HMI and to the physical-world simulator display so operators can quickly detect and respond to faults. The PLC light sensor and control logic follow the same logic in this article: https://www.linkedin.com/pulse/use-plc-remote-control-circuit-breaker-power-system-yuancheng-liu-7ljxc, the current version provide 11 types of runway warning, 18 types of runway alert and 4 types of airplane alert.
+
+**How warnings & alerts are visualized**
+
+- The **Physical World Simulator** overlays flashing warning/alert icons directly on the simulated equipment (e.g., a runway light or beacon) so the operator immediately sees the affected component.
+- The **HMI** mirrors those notifications in a dedicated **Warning & Alert Indicators panel**, where alarms flash and provide contextual information (type, affected device, timestamp).
+
+![](2_CaseStudy_MITM_Img/s_06.png)
+
+**Detection logic example**:
+
+- Operator press control button → HMI sends IEC-104 control command → PLC actuates device and reads local sensor(s) → PLC reports actual state back to HMI.
+- If PLC sensor state ≠ commanded state within a configured timeout or tolerance, the PLC raises an **alert**; if an operator action requires attention but is not critical, a **warning** may be shown instead. The PLC/HMI follow the same sensor/control logic used in our PLC remote-control examples.
+
+**Catalog of alerts & warnings**
+
+- **Runway Warnings (11)** — e.g., Takeoff Holding Light Activated; Beacon Tower power warnings; Runway edge light power off; caution-zone ember lights activated.
+- **Runway Alerts (18)** — detailed power/state-mismatch and sensor-failure alerts across approach bars, threshold bars, PAPI, taxiway indicators, radar antenna and VHF antenna.
+- **Airplane Alerts (4)** — e.g., Aircraft fuel-low, aircraft emergency climb, radar proximity, runway-light conflict.
+
+These categories provide multi-tiered situational awareness: warnings for operator attention, alerts that generally require immediate incident-response procedures. 
+
+Operational Response
+
+When a **warning** appears the operator is expected to double-check the physical state and proceed with corrective action. When an **alert** occurs the operator must **invoke incident response procedures** (isolate, verify sensors, roll back commands, call maintenance, etc.).
+
+During the cyber attack, the attacker needs to neutralize or evade these protections,  suppress or forge PLC → HMI feedback so the HMI continues to display “normal” despite actual device state changes.
+
+
+
+- **Runway Warning [11]** : Runway Edge Light Power Off, Caution Zone-RW12-01 Ember Light Activated,  Caution Zone-RW12-02 Ember Light Activated, Caution Zone-RW23-01 Ember Light Activated, Caution Zone-RW23-02 Ember Light Activated, TW-Center-Guide Power Failure, Beacon Tower-W01 Power Failure, Beacon Tower-W02 Power Failure, Beacon Tower-E01 Power Failure, Beacon Tower-E02 Power Failure, Takeoff Holding Light Activated. 
+- **Runway Alert [18]** : Runway-12 Extend Light Power Failure/State Mismatch, Runway-12 Approach Bar Power Failure/State Mismatch, Runway-12 \nThreshold Bar \nPower Failure/State Mismatch, Runway-12 PAPI \nPower Failure/State Mismatch, Runway-12 Caution Zone01 State \nIndicator Power Failure, Runway-12Caution  Zone02 State \nIndicator Power Failure , Runway-23 Caution Zone01 State \nIndicator Power Failure,  Runway-23 Caution Zone02 State \nIndicator Power Failure, Runway-23 PAPI \nPower Failure/State Mismatch, Runway-23 Extend \nLight Power Failure/State Mismatch, Runway-23 \nThreshold Bar \nPower Failure/State Mismatch, Runway-23 Approach Bar \nPower Failure/State Mismatch, Radar\n Antenna \nPower Failure, Runway-12 \nTaxiway \nExit Indicator \nPower Failure/State Mismatch, Runway-12 Taxiway \nEntrance Indicator \nPower Failure/State Mismatch, Runway-23 Taxiway \nEntrance Indicator \nPower Failure/ State Mismatch, Runway-23 \nTaxiway \nExit Indicator \nPower Failure / State Mismatch, VHF Antenna Tower\nPower Failure. 
+- **Airplane Alert [4]**: Airplane fuel level low (12%), Airplane front radar detect target in safety range, Airplane emergency climb up, airplane detect runway lights conflict. 
+
+
+
+------
+
+
+
+
+
