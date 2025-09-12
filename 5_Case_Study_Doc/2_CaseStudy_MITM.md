@@ -104,7 +104,31 @@ These hypotheses, while unrealistic for real-world aviation systems, provide a *
 
 ------
 
-### Attack Scenario and Path Introduction
+### Case Study Attack Scenario and Path
+
+The diagram below illustrates the simulated attack path used in this case study. It shows how an attacker — starting from a compromised maintenance laptop and a tampered IoT camera — establishes a Man-in-the-Middle (MITM) on the **PLC ↔ HMI IEC-104 control channel** to modify the runway holding-light commands data ASDU section, causing a takeoff delay and forcing another inbound aircraft to loiter in the holding pattern until a fuel-low alarm is raised.
+
+![](2_CaseStudy_MITM_Img/s_05.png)
+
+The end-to-end attack unfolds across the following staged timeline (T1 → T13) as marked in the diagram. Each step describes the attacker’s actions, the role of the compromised maintenance engineer as an unwitting insider, and the technical method used to intercept and alter OT traffic.
+
+- **Step-T1 — Initial compromise & beaconing:** The attacker infects the maintenance engineer’s laptop with a spy trojan (via phishing, malvertising, or pre-compromise). The trojan installs network-scanning and packet-capture payload and awaits commands from the attacker’s C2 infrastructure. When the laptop is online, captured telemetry and packets are exfiltrated to C2.
+- **Step-T2 — Physical access to OT:** The maintenance engineer, unaware of the infection, disconnects from the internet and takes the laptop into the runway tower room to perform maintenance tasks. He plugs the laptop into a tower RJ45 test port that is connected to the isolated OT environment.
+- **Step-T3 — Local reconnaissance inside OT:** While connected, the trojan passively records network traffic between the victim laptop and the Level-1 runway PLC (PLC01), capturing IEC-104 frames, addressing, and sequence patterns used for holding-light control.
+- **Step-T4 — Data return & analysis:** After leaving the tower and reconnecting to the internet, the laptop uploads the harvested packet captures to the attacker’s C2. The attacker downloads these captures for offline analysis.
+- **Step-T5 — Attack development:** Using the captured traffic and any leaked documentation, the attacker reverse-engineers the IEC-104 messaging, HMI/PLC IPs and control bits. They develop a MITM routine capable of parsing and modifying specific IEC-104 commands and responses. The attacker embeds this MITM payload into a “customized” firmware image for a third-party IoT surveillance camera.
+- **Step-T6 — Supply-chain delivery:** The attacker executes a supply-chain or logistics trick to get one camera flashed with the malicious firmware and delivered into the maintenance flow.
+- **Step-T7 — Device replacement:** The maintenance engineer (or on-site contractor) replaces a broken camera in the tower with the tampered unit without inspecting its firmware or network placement.
+- **Step-T8 — ARP spoofing & traffic redirection:** Once deployed, the malicious camera activates and performs ARP spoofing / local routing manipulation to position itself as a transparent MITM between PLC01 and the HMI, causing traffic to flow PLC01 → Camera → HMI.
+- **Step-T9 — Packet parsing & trigger logic:** The camera’s MITM routine parses live IEC-104 frames and waits for a specific command/sequence (the “trigger”) that indicates an operator is issuing a takeoff holding-light change.
+- **Step-T10 — Command tampering (takeoff blocked):** When the tower operator presses the HMI button to turn the takeoff holding-light **OFF** (allowing the aircraft to start takeoff), the MITM intercepts and flips the relevant control bit so the command delivered to PLC01 indicates **ON** (hold). The pilot, seeing the physical light, keeps the aircraft at the take off holding area.
+- **Step-T11 — State-feedback suppression:** Simultaneously the MITM modifies PLC → HMI state reports so the HMI displays normal/expected PLC states. This conceals the manipulation from the tower operator and prevents operator corrective action.
+- **Step-T12 — Cascading operational impact:** An inbound aircraft (Plane-2) on final approach observes the runway as occupied (or receives ATC instruction consistent with runway occupied) and must abort/execute a missed approach, climbing back into the holding pattern.
+- **Step-T13 — Safety escalation:** After extended loitering in the holding pattern, the inbound pilot declares a **fuel-low** condition to ATC, prompting priority handling and a safety incident. The tower remains unaware the runway was intentionally withheld due to the MITM manipulation.
+
+This scenario demonstrates how a blended attack — combining endpoint compromise, supply-chain tampering, and an OT-aware MITM — can create dangerous operational outcomes even when primary OT networks are designed to be isolated. All steps above are executed in our cyber range under controlled conditions; they are intended solely to highlight attack mechanics, detection opportunities, and mitigation strategies for training and research.
 
 
+
+------
 
