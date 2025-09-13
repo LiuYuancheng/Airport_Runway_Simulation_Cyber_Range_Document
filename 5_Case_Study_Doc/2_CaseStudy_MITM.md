@@ -262,8 +262,6 @@ After analyzing the captured IEC-104 traffic and identifying the exact ASDU fiel
 
 As the Blue Team Subnet 2 is isolated from internet, rather than attempting a direct attack from the external Red-Team network, the adversary uses a **compromised third-party IoT camera** as the physical medium to achieve that in-path position.  Once connected to the same subnet as the light control HMI, the tampered camera positions itself to observe and influence HMI↔PLC flows by advertising misleading local network routing information (e.g., forged ARP mappings) so that traffic is routed redirect through the device. The attack flow diagram is shown below:
 
-
-
 ![](2_CaseStudy_MITM_Img/s_15.png)
 
 To build the MITM payload in this attack demo, we use the Ettercap which is Linux based comprehensive suite for man in the middle attack to implement the ARP spoofing and use the Ettercap filter to analysis the port 2042 traffic and do the bit replacement. For the detailed IEC104 ASDU data sequence, you can refer to this doc: https://www.linkedin.com/pulse/python-virtual-plc-simulator-iec-60870-5-104-protocol-yuancheng-liu-bov7c
@@ -314,4 +312,55 @@ Then the attacker follow this example to package this logic malicious payload in
 sudo ettercap -T -q -F mitm.ef -M ARP /10.10.20.1//
 ```
 
-After finished all, the customized IoT camear is then delivered into the maintenance workflow and physically installed in the tower by the maintenance engineer who does not validate firmware or network configuration. Once active on the OT LAN, the camera begins local routing manipulation and selective ASDU substitution, acting only on narrowly defined trigger patterns (to reduce noise and lower chances of detection).
+After finished all, the customized IoT camera is then delivered into the maintenance workflow and physically installed in the tower by the maintenance engineer who does not validate firmware or network configuration. Once active on the OT LAN, the camera begins local routing manipulation and selective ASDU substitution, acting only on narrowly defined trigger patterns (to reduce noise and lower chances of detection).
+
+
+
+------
+
+#### Step-T8 → T11 — MITM Attack to Delay the Plane Take-Off 
+
+This stage describes what happens **after** the tampered IoT camera is installed in the tower and the attacker’s in-path logic goes live. The narrative below contrasts the normal operator/PLC/HMI behavior with what the operator observes while the MITM is actively manipulating both command and state traffic.
+
+**Normal operation — “Take-off allow” (baseline)**
+
+When operations are normal and the runway is clear, the tower operator's plane take off control is shown below:
+
+![](2_CaseStudy_MITM_Img/s_16.png)
+
+- The tower operator issues the **take-off holding-light OFF** command on the HMI to allow the aircraft to commence takeoff.
+
+- The HMI sends an IEC-104 control to the PLC; the PLC switches the runway take-off holding light off at the device and reports the sensor state back to the HMI.
+- The physical simulator (or real device) shows the light OFF; the HMI runway state panel and power control indicator both reflect the OFF state; no take-off warning is shown.
+
+**Normal operation — “Take-off holding” (baseline)**
+
+When there is a reason to hold a takeoff (e.g.,  another landed aircraft has not moved in taxiway), the tower operator's plane take off holding control is shown below:
+
+![](2_CaseStudy_MITM_Img/s_17.png)
+
+- The operator activates the **take-off holding light ON** via HMI to PLC.
+- PLC change the physical world simulator's take off holding light on and the take off plane wait at the prepare area. 
+- The HMI get sensor data from PLC and updates on its runway panel with 2 red lines.
+- The HMI warning indicator area shows a take-off holding **warning** to identify a plane is waring for take off.
+
+**MITM active — how the attack alters behavior**
+
+Once the malicious camera becomes an in-path device, it selectively intercepts the HMI ↔ PLC exchange and performs two coordinated actions each time an operator changes the takeoff lights. 
+
+- **Modify outgoing control command (HMI → PLC):**The MITM flips or substitutes the operator’s intended control action so the PLC receives a different command than what the operator issued (e.g., operator pressed OFF but PLC receives an ON—or vice-versa).
+
+- **Forge/alter PLC readback (PLC → HMI):**
+   Immediately after the PLC’s real sensor state is (or is not) changed, the MITM modifies the PLC → HMI report so the HMI displays the **expected** value (the one the operator expects to see), preventing an alert or obvious state mismatch on the console.
+
+The observation will be shown below:
+
+![](2_CaseStudy_MITM_Img/s_18.png)
+
+- Tower Operator press the holding light off button on HMI to allow the plane1 take off.
+- The physical light remains in the opposite state to what the operator believes (e.g., operator turned it OFF but it remains ON in the real world). The aircraft at the hold point therefore does not initiate takeoff. 
+- The HMI shows normal/expected status (power off), because the MITM manipulated PLC → HMI reports to hide the mismatch. The operator sees nothing unusual and assumes the command succeeded.
+- The power control panel may indicate the expected command state (because that indicator reflects the manipulated feedback), further convincing the operator that the runway is clear.
+- The warning message also not triggered for confirming no plane is at the take off holding state.
+
+Now the IoT camera's man in the mid attack has delayed the plane take off procedure. 
