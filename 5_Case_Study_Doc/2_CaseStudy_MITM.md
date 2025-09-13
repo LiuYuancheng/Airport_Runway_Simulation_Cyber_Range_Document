@@ -166,13 +166,43 @@ During the cyber attack, the attacker needs to neutralize or evade these protect
 
 
 
-- **Runway Warning [11]** : Runway Edge Light Power Off, Caution Zone-RW12-01 Ember Light Activated,  Caution Zone-RW12-02 Ember Light Activated, Caution Zone-RW23-01 Ember Light Activated, Caution Zone-RW23-02 Ember Light Activated, TW-Center-Guide Power Failure, Beacon Tower-W01 Power Failure, Beacon Tower-W02 Power Failure, Beacon Tower-E01 Power Failure, Beacon Tower-E02 Power Failure, Takeoff Holding Light Activated. 
-- **Runway Alert [18]** : Runway-12 Extend Light Power Failure/State Mismatch, Runway-12 Approach Bar Power Failure/State Mismatch, Runway-12 \nThreshold Bar \nPower Failure/State Mismatch, Runway-12 PAPI \nPower Failure/State Mismatch, Runway-12 Caution Zone01 State \nIndicator Power Failure, Runway-12Caution  Zone02 State \nIndicator Power Failure , Runway-23 Caution Zone01 State \nIndicator Power Failure,  Runway-23 Caution Zone02 State \nIndicator Power Failure, Runway-23 PAPI \nPower Failure/State Mismatch, Runway-23 Extend \nLight Power Failure/State Mismatch, Runway-23 \nThreshold Bar \nPower Failure/State Mismatch, Runway-23 Approach Bar \nPower Failure/State Mismatch, Radar\n Antenna \nPower Failure, Runway-12 \nTaxiway \nExit Indicator \nPower Failure/State Mismatch, Runway-12 Taxiway \nEntrance Indicator \nPower Failure/State Mismatch, Runway-23 Taxiway \nEntrance Indicator \nPower Failure/ State Mismatch, Runway-23 \nTaxiway \nExit Indicator \nPower Failure / State Mismatch, VHF Antenna Tower\nPower Failure. 
-- **Airplane Alert [4]**: Airplane fuel level low (12%), Airplane front radar detect target in safety range, Airplane emergency climb up, airplane detect runway lights conflict. 
-
-
-
 ------
+
+### Attack Scenario Demonstration 
+
+This section will introduce the tools, the analysis and the critical steps of the attacker's action of the whole attack scenario steps by steps. 
+
+#### Step-T1~T2 — Initial compromise & beaconing
+
+This demo section covers the attacker’s first two stages: 
+
+- (1) silently implanting a light-weight eavesdropper on the maintenance engineer’s laptop,
+- (2) waiting for the engineer to carry that infected endpoint into the isolated OT environment so the implant can capture PLC to victim laptop traffic.
+
+**Toolset used** : The attacker uses a red-team toolkit I developed — **Project Ninja RT Framework** (RTC2 & Trojan-Malware Cyber-Attack Simulation System). Project Ninja provides a C2 console with modular payloads that can be pushed to a target, including a small “light agent” designed for long-duration packet capture and exfiltration. The toolkit workflow is shown in the diagram below.
+
+![](2_CaseStudy_MITM_Img/s_07.png)
+
+For the detail introduction about this attack system, you can check this document: https://www.linkedin.com/pulse/project-ninja-framework-rtc2-trojan-malware-cyber-attack-liu-loihc
+
+**Infection & payload deployment**
+From the C2 web trojan control dashboard the attacker enumerates the victim laptop and selects the light agent payload (Function #9 in the console). Using the GUI, the attacker configures the capture parameters:
+
+- target NIC: `ethernet-5` (laptop local RJ45 interface the engineer will later link into the tower test RJ45 port)
+- capture duration / interval: `43,200` seconds → **12 hours** (the agent segments captures into several pcap files)
+- post-capture behavior: auto-remove the payload module after scheduled recordings finish
+
+![](2_CaseStudy_MITM_Img/s_08.png)
+
+After the payload is installed (Step-T1), the attacker waits for the scheduled maintenance window. On the next workday the maintenance engineer disconnects from the internet, enters the runway tower, and plugs the laptop into the isolated Blue Team Subnet-2 RJ45 test port (Step-T2). During that session the implant captures the HMI ↔ PLC traffic (takeoff/holding light tests and state reports) exactly as planned.
+
+Once deployed, the trojan runs in a low-visibility mode and periodically attempts to beacon to the attacker’s C2 to receive commands and to exfiltrate collected pcaps when the laptop regains internet connectivity.
+
+
+
+
+
+  
 
 
 
